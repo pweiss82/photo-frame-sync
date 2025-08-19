@@ -7,10 +7,10 @@
 RAW_DIR="$HOME/Pictures/PhotoFrame/Raw"
 DISPLAY_DIR="$HOME/Pictures/PhotoFrame/Display"
 
-# For local testing, we'll skip rclone sync and just test the conversion logic
-# RCLONE_REMOTE="gdrive"
-# RCLONE_TEAM_DRIVE_ID="0ANrWAw4_0pIuUk9PVA"
-# RCLONE_SOURCE="Display on TV"
+# Real Google Drive configuration for end-to-end testing
+RCLONE_REMOTE="gdrive"
+RCLONE_TEAM_DRIVE_ID=""
+RCLONE_SOURCE=""
 
 RCLONE_BIN="/opt/homebrew/bin/rclone"
 HEIF_CONVERT_BIN="/opt/homebrew/bin/heif-convert"
@@ -214,24 +214,16 @@ main() {
 
   ensure_dirs
 
-  # For local testing, skip rclone sync
-  # log "Running rclone sync from Shared Drive…"
-  # "$RCLONE_BIN" sync \
-  #   --drive-team-drive="$RCLONE_TEAM_DRIVE_ID" \
-  #   --drive-duplicates-mode first \
-  #   --fast-list \
-  #   "$RCLONE_REMOTE:$RCLONE_SOURCE" \
-  #   "$RAW_DIR" >> "$LOG_FILE" 2>&1
+  # Real Google Drive sync
+  log "Running rclone sync from Google Drive…"
+  "$RCLONE_BIN" sync \
+    --fast-list \
+    "$RCLONE_REMOTE:" \
+    "$RAW_DIR" >> "$LOG_FILE" 2>&1
 
-  log "Running local tests..."
+  log "Starting real sync process..."
 
   cleanup_hdr_gainmaps
-
-  # Test image copy functionality
-  test_image_copy
-
-  # Test HEIC conversion
-  test_heic_conversion
 
   # Copy non-HEIC originals into Display (NO --delete here to avoid nuking converted JPGs)
   if [ -n "$RSYNC_BIN" ]; then
@@ -255,9 +247,9 @@ main() {
   # Now that everything is in place, remove any Display images with no source in Raw
   cleanup_orphans_display_images
 
-  # For local testing, skip feh (unless you have X11 running)
-  # kill_feh_if_running
-  # start_feh
+  # Test slideshow functionality
+  kill_feh_if_running
+  start_feh
 
   log "Local test sync finished."
   echo "=== Local test sync finished at $(timestamp) ===" >> "$LOG_FILE"
