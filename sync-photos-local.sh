@@ -9,8 +9,8 @@ DISPLAY_DIR="$HOME/Pictures/PhotoFrame/Display"
 
 # Real Google Drive configuration for end-to-end testing
 RCLONE_REMOTE="gdrive"
-RCLONE_TEAM_DRIVE_ID=""
-RCLONE_SOURCE=""
+RCLONE_TEAM_DRIVE_ID="0ANrWAw4_0pIuUk9PVA"
+RCLONE_SOURCE="Display on TV"
 
 RCLONE_BIN="/opt/homebrew/bin/rclone"
 HEIF_CONVERT_BIN="/opt/homebrew/bin/heif-convert"
@@ -126,11 +126,19 @@ cleanup_hdr_gainmaps() {
 #  - has a matching source in Raw with the SAME stem in (.jpg/.jpeg/.png any case), OR
 #  - has a matching source HEIC with the SAME stem (meaning this JPG was converted).
 cleanup_orphans_display_images() {
+  log "Checking for orphaned display images..."
+  local removed_count=0
+  
   while IFS= read -r -d '' img; do
     fname="$(basename "$img")"
     stem="${fname%.*}"
 
-    # exists in RAW as non-HEIC?
+    # Check if this exact file exists in RAW
+    if [ -f "$RAW_DIR/$fname" ]; then
+      continue
+    fi
+    
+    # exists in RAW as non-HEIC with same stem?
     if ls "$RAW_DIR/$stem".{JPG,Jpg,jpg,JPEG,jpeg,PNG,png} >/dev/null 2>&1; then
       continue
     fi
@@ -141,7 +149,10 @@ cleanup_orphans_display_images() {
 
     log "Removing orphaned display file: $img"
     rm -f "$img"
+    ((removed_count++))
   done < <(find "$DISPLAY_DIR" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -print0)
+  
+  log "Removed $removed_count orphaned display files"
 }
 
 ###############################################################################
@@ -215,10 +226,11 @@ main() {
   ensure_dirs
 
   # Real Google Drive sync
-  log "Running rclone sync from Google Drive…"
+  log "Running rclone sync from Shared Drive…"
   "$RCLONE_BIN" sync \
+    --drive-team-drive="$RCLONE_TEAM_DRIVE_ID" \
     --fast-list \
-    "$RCLONE_REMOTE:" \
+    "$RCLONE_REMOTE:$RCLONE_SOURCE" \
     "$RAW_DIR" >> "$LOG_FILE" 2>&1
 
   log "Starting real sync process..."
@@ -228,6 +240,8 @@ main() {
   # Copy non-HEIC originals into Display (NO --delete here to avoid nuking converted JPGs)
   if [ -n "$RSYNC_BIN" ]; then
     log "Copying non-HEIC images to display directory via rsync…"
+    local before_count=$(find "$DISPLAY_DIR" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) | wc -l)
+    
     "$RSYNC_BIN" -a --prune-empty-dirs \
       --include '*/' \
       --include '*.jpg' --include '*.JPG' \
@@ -235,6 +249,9 @@ main() {
       --include '*.png' --include '*.PNG' \
       --exclude '*' \
       "$RAW_DIR"/ "$DISPLAY_DIR"/ >> "$LOG_FILE" 2>&1
+    
+    local after_count=$(find "$DISPLAY_DIR" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) | wc -l)
+    log "Display files before rsync: $before_count, after: $after_count"
   else
     log "rsync not found; skipping direct mirror of non-HEIC images."
   fi
